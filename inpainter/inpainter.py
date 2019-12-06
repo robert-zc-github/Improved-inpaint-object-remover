@@ -16,7 +16,7 @@ class Inpainter():
         self.plot_progress = plot_progress  # 是否显示中间过程
 
         # Non initialized attributes 未初始化参数
-        self.plot_image_path = '../resources/plot_process/test002/image8/'  # 中间文件保存路径
+        self.plot_image_path = '../resources/plot_process/test003/image1/'  # 中间文件保存路径
         self.working_image = None
         self.working_mask = None
         self.front = None
@@ -53,7 +53,7 @@ class Inpainter():
                     self._plot_image()  # 输出中间过程图片
 
         print("now generate result gif")
-        os.system('convert -delay 60 -loop 0 ' + self.plot_image_path + '*.jpg ' + self.plot_image_path + 'result.gif')
+        os.system('convert -delay 30 -loop 0 ' + self.plot_image_path + '*.jpg ' + self.plot_image_path + 'result.gif')
         print('Took %f seconds to complete' % (time.time() - start_time))  # 程序运行总时间
         return self.working_image  # 返回修复完的图像
 
@@ -153,11 +153,16 @@ class Inpainter():
         # 数据项含义：当前像素对边界的法向量与当前像素位置的等照度线的内积与归一化因子之比，反映当前位置的结构信息
         normal = self._calc_normal_matrix()  # 法向量与归一化因子比
         gradient = self._calc_gradient_matrix()  # 等照度线的垂线
-
         normal_gradient = normal * gradient  # 数据项计算公式
-        self.data = np.sqrt(
-            normal_gradient[:, :, 0] ** 2 + normal_gradient[:, :, 1] ** 2
-        ) + 0.001  # To be sure to have a greater than 0 data
+
+        # 原作者代码，这个应该有问题
+        # self.data = np.sqrt(normal_gradient[:, :, 0] ** 2 + normal_gradient[:, :, 1] ** 2) + 0.0001
+        # To be sure to have a greater than 0 data
+
+        # 根据论文修改的试验代码
+        self.data = np.abs(normal_gradient[:, :, 0] + normal_gradient[:, :, 1]) + 0.0001
+        # To be sure to have a greater than 0 data
+
         # TODO：此处的公式是否最优？
 
     def _calc_normal_matrix(self):  # 计算当前边界上各点对于边界的法向量除以归一化系数
@@ -169,9 +174,7 @@ class Inpainter():
         normal = np.dstack((x_normal, y_normal))  # 合并梯度结果
 
         height, width = normal.shape[:2]
-        norm = np.sqrt(y_normal ** 2 + x_normal ** 2) \
-            .reshape(height, width, 1) \
-            .repeat(2, axis=2)
+        norm = np.sqrt(y_normal ** 2 + x_normal ** 2).reshape(height, width, 1).repeat(2, axis=2)
         norm[norm == 0] = 1  # 防止除以0
 
         unit_normal = normal / norm  # 数据项计算公式
@@ -180,32 +183,31 @@ class Inpainter():
 
     def _calc_gradient_matrix(self):
         # TODO: find a better method to calc the gradient
-        height, width = self.working_image.shape[:2]
+        height, width = self.working_image.shape[:2]  # 480*360
 
         grey_image = rgb2grey(self.working_image)
         grey_image[self.working_mask == 1] = None  # 计算等照度线前去除掩膜区域(working_mask==1)的影响
 
-        gradient = np.nan_to_num(np.array(np.gradient(grey_image)))
-        gradient_val = np.sqrt(gradient[0] ** 2 + gradient[1] ** 2)
+        gradient = np.nan_to_num(np.array(np.gradient(grey_image)))  # 获取全图每一个像素点的梯度，掩膜区域用0(或无穷大的任意数字)填充，尺寸为2*height*width（x，y方向）
+        gradient_val = np.sqrt(gradient[0] ** 2 + gradient[1] ** 2)  # 获取全图每一个像素点的梯度大小
         max_gradient = np.zeros([height, width, 2])
 
         front_positions = np.argwhere(self.front == 1)  # 返回边界的位置，使用边界各像素在图像中的位置表示
-        for point in front_positions:
-            patch = self._get_patch(point)
-            patch_y_gradient = self._patch_data(gradient[0], patch)
-            patch_x_gradient = self._patch_data(gradient[1], patch)
-            patch_gradient_val = self._patch_data(gradient_val, patch)
-            # TODO：这里的含义未曾搞懂
-            # 使用unravel_index函数，查找最大梯度
-            patch_max_pos = np.unravel_index(
-                patch_gradient_val.argmax(),
-                patch_gradient_val.shape
-            )
+        for point in front_positions:  # 遍历图像边界
+            patch = self._get_patch(point)  # 取边界上的各像素对应补丁范围
+            patch_y_gradient = self._patch_data(gradient[0], patch)  # 梯度交换  gradient[0] = X轴梯度
+            patch_x_gradient = self._patch_data(gradient[1], patch)  # 梯度交换  gradient[1] = Y轴梯度
+            patch_gradient_val = self._patch_data(gradient_val, patch)  # 边界上这个像素点对应的补丁内，所有像素点的梯度大小
+            patch_max_pos = np.unravel_index(patch_gradient_val.argmax(), patch_gradient_val.shape)  # 查找这个区域内最大梯度
+            # 原作者代码，这个应该有问题
             # x和y方向上的最大梯度值也由最大梯度值决定
-            max_gradient[point[0], point[1], 0] = \
-                patch_y_gradient[patch_max_pos]
-            max_gradient[point[0], point[1], 1] = \
-                patch_x_gradient[patch_max_pos]
+            # max_gradient[point[0], point[1], 0] = patch_y_gradient[patch_max_pos]  #
+            # max_gradient[point[0], point[1], 1] = patch_x_gradient[patch_max_pos]  #
+
+            # 根据论文修改的试验版本
+            # x和y方向上的最大梯度值也由最大梯度值决定
+            max_gradient[point[0], point[1], 0] = patch_x_gradient[patch_max_pos]  #
+            max_gradient[point[0], point[1], 1] = patch_y_gradient[patch_max_pos] * -1  #
 
         return max_gradient
 
