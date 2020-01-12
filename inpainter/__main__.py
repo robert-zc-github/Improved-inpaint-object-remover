@@ -1,7 +1,7 @@
 import argparse
 from skimage.io import imread, imsave
-
 from inpainter import Inpainter
+from inpainter_Origion import Inpainter_Origion
 
 def main():
     args = parse_args()

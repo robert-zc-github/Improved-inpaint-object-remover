@@ -71,4 +71,5 @@ fabric.properties
 
 # plot_progress picture
 /resources/plot_process/*
+/process/*
 
