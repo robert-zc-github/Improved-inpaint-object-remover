@@ -44,15 +44,15 @@ Some reslut of repair:
 
 result of image2
 
-![result2](resources/result2.jpg) 
+![result2](resources/result2.gif) 
 
 result of image3
 
-![result2](resources/result6.jpg) 
+![result2](resources/result6.gif) 
 
 result of image9
 
-![result2](resources/result9.jpg)
+![result2](resources/result9.gif)
 
 ## Reference
 
